@@ -24,6 +24,33 @@ services:
         reservations:
           memory: 1G
 
+  avito-mcp:
+    build:
+      context: ./Avito_autoload
+      dockerfile: mcp_service/Dockerfile
+    container_name: avito-mcp
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Avito_autoload/logs:/app/logs
+      - ./Avito_autoload/out_xml:/app/out_xml
+    environment:
+      - TZ=Europe/Moscow
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - avito-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
   selenium-hub:
     image: seleniarm/hub:4.16.1
     container_name: selenium-hub
