@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.10'
         
     - name: Install dependencies
       run: |
@@ -24,6 +24,9 @@ jobs:
         pip install -r requirements.txt
         
     - name: Run tests
+      env:
+        AVITO_LOGIN: ${{ secrets.AVITO_LOGIN }}
+        AVITO_PASSWORD: ${{ secrets.AVITO_PASSWORD }}
       run: |
         docker-compose up -d
         sleep 30  # Ждем инициализации контейнеров
@@ -36,7 +39,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Deploy to server
       uses: appleboy/ssh-action@master
@@ -44,8 +47,12 @@ jobs:
         host: ${{ secrets.SSH_HOST }}
         username: ${{ secrets.SSH_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT }}
         script: |
-          cd /path/to/project
-          git pull
+          cd ~/avito
+          git pull origin main
+          echo "AVITO_LOGIN=${{ secrets.AVITO_LOGIN }}" > .env
+          echo "AVITO_PASSWORD=${{ secrets.AVITO_PASSWORD }}" >> .env
           docker-compose down
-          docker-compose up -d --build 
+          docker-compose build
+          docker-compose up -d 
