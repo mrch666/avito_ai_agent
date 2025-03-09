@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import json
 import asyncio
 from aiohttp import web
@@ -10,7 +11,6 @@ from loguru import logger
 from datetime import datetime
 
 # Импортируем функции для работы с XML
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from root_xml import create_root_xml, add_ad_element, save_xml
 from utils import validate_xml
 
