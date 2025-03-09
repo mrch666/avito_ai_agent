@@ -1,120 +1,101 @@
 import unittest
-from unittest.mock import Mock, patch
-import os
-import time
-import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+from unittest.mock import patch, MagicMock
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from avito_agent import AvitoAgent
 
 class TestAvitoAgent(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        """Ожидание готовности Selenium Hub"""
-        # Устанавливаем хост для тестов
-        os.environ['SELENIUM_HUB_HOST'] = 'localhost'
-        
-        max_retries = 10
-        retry_delay = 2
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.get('http://localhost:4444/wd/hub/status')
-                if response.status_code == 200 and response.json()['value']['ready']:
-                    break
-            except:
-                if attempt == max_retries - 1:
-                    raise Exception("Selenium Hub не готов после нескольких попыток")
-                time.sleep(retry_delay)
-    
     def setUp(self):
-        """Подготовка окружения перед каждым тестом"""
-        # Создаем тестовые учетные данные
-        os.environ['AVITO_LOGIN'] = 'test_user'
-        os.environ['AVITO_PASSWORD'] = 'test_password'
-        
-        # Инициализируем агента в headless режиме
-        self.agent = AvitoAgent(headless=True)
-        
+        """Подготовка перед каждым тестом"""
+        self.config = {
+            'username': 'test_user',
+            'password': 'test_pass',
+            'proxy': {
+                'http': 'http://proxy:8080',
+                'https': 'https://proxy:8080'
+            },
+            'user_agent': 'Mozilla/5.0 Test Agent',
+            'selenium_hub_url': 'http://localhost:4444/wd/hub'
+        }
+        self.agent = AvitoAgent(self.config)
+
     def tearDown(self):
         """Очистка после каждого теста"""
-        try:
-            self.agent.__del__()
-        except:
-            pass
-            
+        if hasattr(self, 'agent') and self.agent.driver:
+            self.agent.driver.quit()
+
     @patch('selenium.webdriver.Remote')
-    def test_initialization(self, mock_remote):
-        """Проверка корректной инициализации агента"""
-        agent = AvitoAgent(headless=True)
-        self.assertIsNotNone(agent.driver)
-        self.assertEqual(agent.username, 'test_user')
-        self.assertEqual(agent.password, 'test_password')
-        
+    def test_initialization(self, mock_driver):
+        """Тест инициализации агента"""
+        self.assertIsNotNone(self.agent)
+        self.assertEqual(self.agent.username, 'test_user')
+        self.assertEqual(self.agent.password, 'test_pass')
+        self.assertEqual(self.agent.proxy, self.config['proxy'])
+        self.assertEqual(self.agent.user_agent, self.config['user_agent'])
+        self.assertEqual(self.agent.selenium_hub_url, self.config['selenium_hub_url'])
+
     @patch('selenium.webdriver.Remote')
-    def test_login_success(self, mock_remote):
-        """Проверка успешной авторизации"""
-        # Настраиваем мок для успешной авторизации
-        mock_driver = Mock()
-        mock_driver.current_url = 'https://www.avito.ru/profile'
-        mock_remote.return_value = mock_driver
+    def test_login_success(self, mock_driver):
+        """Тест успешной авторизации"""
+        mock_element = MagicMock()
+        mock_driver.return_value.find_element.return_value = mock_element
+        mock_driver.return_value.current_url = 'https://www.avito.ru/profile'
         
-        agent = AvitoAgent(headless=True)
-        result = agent.login()
+        result = self.agent.login()
         
         self.assertTrue(result)
-        mock_driver.get.assert_called_with('https://www.avito.ru/profile/login')
-        
+        mock_driver.return_value.get.assert_called_with('https://www.avito.ru/profile')
+        mock_element.send_keys.assert_any_call('test_user')
+        mock_element.send_keys.assert_any_call('test_pass')
+        mock_element.click.assert_called()
+
     @patch('selenium.webdriver.Remote')
-    def test_login_failure(self, mock_remote):
-        """Проверка неуспешной авторизации"""
-        # Настраиваем мок для неуспешной авторизации
-        mock_driver = Mock()
+    def test_login_failure(self, mock_driver):
+        """Тест неудачной авторизации"""
+        mock_driver = MagicMock()
         mock_driver.current_url = 'https://www.avito.ru/login'
-        mock_remote.return_value = mock_driver
+        mock_driver.find_element.side_effect = Exception('Element not found')
         
-        agent = AvitoAgent(headless=True)
-        result = agent.login()
-        
-        self.assertFalse(result)
-        
+        with self.assertRaises(Exception):
+            self.agent.login()
+
     @patch('selenium.webdriver.Remote')
-    def test_create_listing(self, mock_remote):
-        """Проверка создания объявления"""
-        mock_driver = Mock()
-        mock_remote.return_value = mock_driver
+    def test_create_listing(self, mock_driver):
+        """Тест создания объявления"""
+        mock_element = MagicMock()
+        mock_driver.return_value.find_element.return_value = mock_element
         
-        agent = AvitoAgent(headless=True)
-        result = agent.create_listing(
-            title="Test Item",
-            description="Test Description",
-            price=1000,
-            category="Электроника",
-            images=["test.jpg"]
-        )
+        listing_data = {
+            'title': 'Test Item',
+            'description': 'Test Description',
+            'price': '1000',
+            'category': 'Electronics',
+            'images': ['test1.jpg', 'test2.jpg']
+        }
+        
+        result = self.agent.create_listing(listing_data)
         
         self.assertTrue(result)
-        mock_driver.get.assert_called_with('https://www.avito.ru/additem')
-        
+        mock_driver.return_value.get.assert_called_with('https://www.avito.ru/additem')
+        mock_element.send_keys.assert_any_call('Test Item')
+        mock_element.send_keys.assert_any_call('Test Description')
+        mock_element.send_keys.assert_any_call('1000')
+
     @patch('selenium.webdriver.Remote')
-    def test_proxy_configuration(self, mock_remote):
-        """Проверка конфигурации прокси"""
-        proxy = "127.0.0.1:8080"
-        agent = AvitoAgent(headless=True, proxy=proxy)
-        
-        mock_remote.assert_called_once()
-        options = mock_remote.call_args[1]['options']
-        self.assertIn(f'--proxy-server={proxy}', 
-                     [arg for arg in options.arguments if arg.startswith('--proxy-server')])
-        
+    def test_proxy_configuration(self, mock_driver):
+        """Тест конфигурации прокси"""
+        options = mock_driver.return_value.options
+        self.assertEqual(self.agent.proxy['http'], 'http://proxy:8080')
+        self.assertEqual(self.agent.proxy['https'], 'https://proxy:8080')
+        self.assertIn('--proxy-server=proxy:8080', options.arguments)
+
     @patch('selenium.webdriver.Remote')
-    def test_user_agent_configuration(self, mock_remote):
-        """Проверка конфигурации User-Agent"""
-        agent = AvitoAgent(headless=True)
-        
-        mock_remote.assert_called_once()
-        options = mock_remote.call_args[1]['options']
-        self.assertTrue(any(arg.startswith('user-agent=') for arg in options.arguments))
-        
+    def test_user_agent_configuration(self, mock_driver):
+        """Тест конфигурации User-Agent"""
+        options = mock_driver.return_value.options
+        self.assertEqual(self.agent.user_agent, 'Mozilla/5.0 Test Agent')
+        self.assertIn('--user-agent=Mozilla/5.0 Test Agent', options.arguments)
+
 if __name__ == '__main__':
     unittest.main() 
